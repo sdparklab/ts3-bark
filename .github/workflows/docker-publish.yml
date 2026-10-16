@@ -1,0 +1,58 @@
+# 打 tag 时自动构建「多架构」镜像并推送到 GitHub 容器仓库 (ghcr.io)
+#
+# 用法：  git tag v1.0.0 && git push --tags
+# 结果：  ghcr.io/<你的用户名>/ts3-bark:1.0.0  和  ghcr.io/<你的用户名>/ts3-bark:latest
+#
+# ⚠️ 首次推送成功后，去 GitHub → 右上角头像 → Your packages → 选中 ts3-bark
+#    → Package settings → Change visibility → Public，别人才能拉取。
+# ⚠️ 若你的 GitHub 用户名含大写字母，GHCR 不允许，请把下面的 images 改为手写小写形式，
+#    例如：images: ghcr.io/joko/ts3-bark
+name: build-and-push
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:      # 也支持在页面上手动点按钮触发
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 准备 QEMU（用于构建 arm64）
+        uses: docker/setup-qemu-action@v3
+
+      - name: 准备 Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 生成标签
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # GHCR 的镜像路径必须全小写，所以这里直接写死；以后改用户名/仓库名记得同步改这行
+          images: ghcr.io/sdparklab/ts3-bark
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: 构建并推送（linux/amd64 + linux/arm64）
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
