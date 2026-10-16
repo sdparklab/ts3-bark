@@ -1,0 +1,42 @@
+# docker-compose 用法（Unraid 上装 Compose Manager 插件，或任意装了 docker compose 的机器）
+#
+#   docker compose up -d
+#   docker compose logs -f
+#
+# 镜像可以是本地构建的 ts3-bark:1.0.0，也可以换成你 push 到 Docker Hub 的 用户名/ts3-bark:latest
+services:
+  ts3-bark:
+    # 直接用已发布的镜像；想用本地构建的版本就换成 ts3-bark:1.0.0
+    image: sdparklab/ts3-bark:latest
+    container_name: ts3-bark
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+
+      # ---- TS3 ServerQuery ----
+      TS3_HOST: 192.168.100.200      # TS3 所在主机（Query 端口映射到的那台）
+      TS3_QPORT: "10011"             # Query 端口
+      TS3_PORT: "9987"               # 语音端口，仅用于 use 选服
+      TS3_USER: MyQueryLogin
+      TS3_PASS: "改成你的Query密码"
+      BOT_NICK: BarkNotify           # 机器人昵称（撞名会自动加随机后缀）
+
+      # ---- Bark ----
+      BARK_SERVER: http://192.168.100.200:8880    # 自建 Bark 地址（外网域名也行）
+      BARK_KEY: "改成你的设备key"
+      BARK_GROUP: TeamSpeak
+      BARK_SOUND: calypso
+      TS3_LINK: ""                   # 留空 = 通知里不带跳转链接
+
+      # ---- 行为 ----
+      REPORT_LEAVE: "1"              # 1=也播报离开
+      IDLE_SEC: "90"                 # 保活 + 对账间隔（秒）
+      DEDUP_SEC: "60"                # 同一人同动作去重窗口（秒）
+      ALERT_ON_ERROR: "1"            # 连不上 TS3 时推 Bark 告警
+      ALERT_AFTER_FAILS: "3"         # 连续失败几次才告警
+      # WATCH_UIDS: "uid1,uid2"      # 只播报这几个人（留空 = 所有人）
+      # MUTE_CHANNELS: "12,13"       # 静音这些频道 cid（留空 = 不静音）
+
+    # 想「改脚本不用重建镜像」就把下面两行放开（目录里要有 ts3_bark.py）：
+    # volumes:
+    #   - /mnt/westerndigital/appdata/ts3bark:/app
