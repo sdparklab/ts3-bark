@@ -12,7 +12,7 @@
 
 <!-- 截图：竖屏手机截图用 <img width="360"> 限宽，否则会占满整屏 -->
 <p align="center">
-  <img src="screenshot.png" alt="Bark 通知效果" width="360">
+  <img src="screenshot.png" alt="Bark 通知效果" width="300">
 </p>
 
 > 单文件、纯 Python 标准库、**零第三方依赖**，镜像仅约 55MB。全部通过环境变量配置，不需要改代码。
