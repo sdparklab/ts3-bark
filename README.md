@@ -10,8 +10,10 @@
 - 📦 镜像地址：<https://hub.docker.com/r/sdparklab/ts3-bark> → `docker pull sdparklab/ts3-bark`
 - 📖 源码仓库：<https://github.com/sdparklab/ts3-bark>
 
-<!-- 提示：把你的 Bark 通知截图存成 screenshot.png 放到仓库根目录，下面这行才会正常显示 -->
-![通知效果](screenshot.png)
+<!-- 截图：竖屏手机截图用 <img width="360"> 限宽，否则会占满整屏 -->
+<p align="center">
+  <img src="screenshot.png" alt="Bark 通知效果" width="360">
+</p>
 
 > 单文件、纯 Python 标准库、**零第三方依赖**，镜像仅约 55MB。全部通过环境变量配置，不需要改代码。
 
