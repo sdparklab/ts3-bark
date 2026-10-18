@@ -100,17 +100,6 @@ services:
       BARK_KEY: 你的Bark设备key
 ```
 
-### Unraid
-
-Docker 页签 → ADD CONTAINER：
-
-| 配置项 | 值 |
-|---|---|
-| Name | `ts3-bark` |
-| Repository | `sdparklab/ts3-bark:latest` |
-| Network Type | `Bridge` |
-| Autostart | `On` |
-
 其余环境变量通过 Add another Path, Port, Variable, Label or Device 添加（类型选择 Variable）。无需映射端口或目录。
 
 ## 环境变量
