@@ -5,53 +5,42 @@
 ![GitHub stars](https://img.shields.io/github/stars/sdparklab/ts3-bark?style=flat)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
-把 **TeamSpeak 3 的进服 / 离服事件**实时推送到 **Bark**（iPhone 推送）。自建 TS3、想第一时间知道谁进来了，装它就行。
+将 TeamSpeak 3 的客户端登录、退出事件实时推送至 Bark（iOS）。适用于自建 TS3 服务器。
 
-- 📦 镜像地址：<https://hub.docker.com/r/sdparklab/ts3-bark> → `docker pull sdparklab/ts3-bark`
-- 📖 源码仓库：<https://github.com/sdparklab/ts3-bark>
+- 镜像：`docker pull sdparklab/ts3-bark`（[Docker Hub](https://hub.docker.com/r/sdparklab/ts3-bark)）
+- 源码：[github.com/sdparklab/ts3-bark](https://github.com/sdparklab/ts3-bark)
 
-<!-- 截图：竖屏手机截图用 <img width="360"> 限宽，否则会占满整屏 -->
 <p align="center">
-  <img src="screenshot.png" alt="Bark 通知效果" width="300">
+  <img src="screenshot.png" alt="推送示例" width="360">
 </p>
 
-> 单文件、纯 Python 标准库、**零第三方依赖**，镜像仅约 55MB。全部通过环境变量配置，不需要改代码。
+## 简介
 
----
+TS3 的 ServerQuery 事件订阅（`servernotifyregister`）以连接为单位。连接断开或空闲超时后订阅即失效，此后所有事件丢失，且不会产生任何提示。多数 TS3 播报工具因此表现为：长时间无人时不再通知，发起一次查询后又恢复正常。
 
-## 为什么会有这个东西
-
-很多 TS3 播报机器人都有个通病：**冷的时候会"睡着"** —— 服务器半天没人，它就不报了；你在群里问一句"现在有人吗"，它答完又能正常播报一会儿。
-
-原因是 TS3 的 ServerQuery 事件订阅（`servernotifyregister`）是**连接级**的：连接一旦断开或空闲超时，订阅就静默失效，之后所有事件全部丢失。本项目的全部设计都在解决这一件事。
+本项目围绕该问题设计，通过连接保活、断线后重新订阅、定期状态对账三项机制保证事件不丢失。
 
 ## 特性
 
-- **四层保障让事件不丢**：常驻长连接 + 定时保活 + 断线重连并重新订阅 + 定时对账兜底
-- **断线会主动告诉你**：连不上 TS3 时推一条「⛔ 离线」，恢复后推一条「✅ 恢复」（状态变化才推，不刷屏）
-- **重连带指数退避**（5→10→20→40→60 秒），不会疯狂冲击服务端触发 Query 封禁
-- **昵称冲突自愈**：撞上 `error id=513` 会自动换一个带随机后缀的昵称
-- **零依赖、单文件**，镜像小、启动快，支持 `linux/amd64` 与 `linux/arm64`
-- 可选能力：只播报指定的人（`WATCH_UIDS`）、静音指定频道（`MUTE_CHANNELS`）、不播报离开（`REPORT_LEAVE=0`）
+- 长连接常驻，每 `IDLE_SEC` 秒发送 `version` 保活，避免 Query 空闲超时
+- 断线自动重连，并重新执行 `login`、`use`、`servernotifyregister`
+- 每 `IDLE_SEC` 秒拉取 `clientlist` 与本地状态比对，补齐遗漏事件
+- 重连间隔按指数退避（5 至 60 秒），避免触发 Query 洪水保护
+- 昵称冲突（`error id=513`）时自动追加随机后缀
+- 连接连续失败达 `ALERT_AFTER_FAILS` 次时推送离线告警，恢复后推送恢复通知
+- 仅依赖 Python 标准库，镜像约 55 MB，支持 `linux/amd64` 与 `linux/arm64`
 
-## 它是怎么工作的
+## 工作方式
 
 ```
-TeamSpeak3 服务器 (UDP 9987)
-      │  ServerQuery 事件流 (TCP 10011)
+TeamSpeak 3（UDP 9987）
+      │ ServerQuery 事件流（TCP 10011）
       ▼
-  本容器（长连接常驻）
-      │  HTTP POST
+  本容器（常驻）
+      │ HTTP POST
       ▼
-  Bark（自建 bark-server 或官方 api.day.app）→ iPhone
+  Bark（官方 api.day.app 或自建 bark-server）→ iPhone
 ```
-
-四层保障的具体含义：
-
-1. **保活**：每 `IDLE_SEC` 秒（默认 90）发一次 `version` 命令，避免 Query 空闲被服务端踢掉
-2. **重连 + 重新订阅**：断线后自动 `login → use → servernotifyregister` 重建订阅（这一步是很多机器人漏掉的关键）
-3. **对账兜底**：每 90 秒拉一次 `clientlist` 和本地状态比对，万一事件真漏了，最多 90 秒后补报
-4. **退避**：连续失败时逐渐拉长重试间隔，避免把服务端惹毛
 
 ## 快速开始
 
@@ -65,13 +54,7 @@ docker run -d --name ts3-bark --restart=unless-stopped \
   sdparklab/ts3-bark:latest
 ```
 
-看日志确认：
-
-```bash
-docker logs -f ts3-bark
-```
-
-正常时你会看到：
+日志出现以下内容表示运行正常：
 
 ```
 基线建立：当前在线 0 人，频道 5 个
@@ -80,9 +63,9 @@ docker logs -f ts3-bark
 [bark] 200 {"code":200,"message":"success","timestamp":...}
 ```
 
-### 先干跑验证（推荐）
+### 验证模式
 
-`--probe` 模式**只打印、不推送**，用来确认权限和事件都正常，不会打扰手机：
+`--probe` 仅输出事件、不发送推送，用于确认账号权限与事件可达性：
 
 ```bash
 docker run --rm -it \
@@ -91,9 +74,7 @@ docker run --rm -it \
   sdparklab/ts3-bark:latest --probe
 ```
 
-### 诊断模式
-
-看服务器上都有谁（包含 ServerQuery / 僵尸连接）：
+`--who` 输出服务器当前全部客户端，含 ServerQuery 连接：
 
 ```bash
 docker run --rm -it \
@@ -102,7 +83,7 @@ docker run --rm -it \
   sdparklab/ts3-bark:latest --who
 ```
 
-### docker compose
+### Docker Compose
 
 ```yaml
 services:
@@ -121,97 +102,95 @@ services:
 
 ### Unraid
 
-Docker 页签 → **ADD CONTAINER**：
+Docker 页签 → ADD CONTAINER：
 
-| 字段 | 填什么 |
+| 配置项 | 值 |
 |---|---|
 | Name | `ts3-bark` |
 | Repository | `sdparklab/ts3-bark:latest` |
 | Network Type | `Bridge` |
 | Autostart | `On` |
 
-然后点 **Add another Path, Port, Variable…** → 类型选 **Variable**，把上表里的环境变量一条条加上去（`TZ` / `TS3_HOST` / `TS3_USER` / `TS3_PASS` / `BARK_SERVER` / `BARK_KEY`）。不需要加任何端口或路径。
+其余环境变量通过 Add another Path, Port, Variable, Label or Device 添加（类型选择 Variable）。无需映射端口或目录。
 
 ## 环境变量
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `TS3_HOST` | *(必填)* | TS3 主机地址（Query 端口映射到的那台机器） |
+| `TS3_HOST` | 必填 | TS3 主机地址（映射 Query 端口的主机） |
 | `TS3_QPORT` | `10011` | ServerQuery 端口（RAW） |
-| `TS3_PORT` | `9987` | 语音端口，仅用于 `use` 选服 |
-| `TS3_USER` | *(必填)* | Query 账号 |
-| `TS3_PASS` | *(必填)* | Query 密码 |
-| `BOT_NICK` | `BarkNotify` | 机器人昵称；撞名（`error id=513`）会自动加随机后缀 |
-| `BARK_SERVER` | *(必填)* | Bark 服务地址（`https://api.day.app` 或你的自建地址） |
-| `BARK_KEY` | *(必填)* | Bark 设备 key（每台设备一个） |
+| `TS3_PORT` | `9987` | 语音端口，仅用于 `use` 选定虚拟服务器 |
+| `TS3_USER` | 必填 | ServerQuery 账号 |
+| `TS3_PASS` | 必填 | ServerQuery 密码 |
+| `BOT_NICK` | `BarkNotify` | 机器人昵称，冲突时自动追加后缀 |
+| `BARK_SERVER` | 必填 | Bark 服务地址 |
+| `BARK_KEY` | 必填 | Bark 设备 key |
 | `BARK_GROUP` | `TeamSpeak` | 通知分组 |
 | `BARK_SOUND` | `calypso` | 通知铃声 |
-| `TS3_LINK` | *(空)* | 通知里的跳转链接（如 `ts3server://host?port=9987`）；留空则不带链接 |
-| `REPORT_LEAVE` | `1` | 是否播报「离开」 |
-| `WATCH_UIDS` | *(空)* | 只播报这些 UID，逗号分隔；留空 = 所有人 |
-| `MUTE_CHANNELS` | *(空)* | 不播报的频道 cid，逗号分隔（如挂机频道） |
-| `IDLE_SEC` | `90` | 保活 + 对账间隔（秒） |
-| `DEDUP_SEC` | `60` | 同一人同动作去重窗口（秒），防掉线重连刷屏 |
-| `ALERT_ON_ERROR` | `1` | 连不上 TS3 时推 Bark 告警 |
-| `ALERT_AFTER_FAILS` | `3` | 连续失败几次才告警 |
+| `TS3_LINK` | 空 | 通知跳转链接，留空则不发送 `url` 字段 |
+| `REPORT_LEAVE` | `1` | 是否推送退出事件 |
+| `WATCH_UIDS` | 空 | 仅推送指定 UID，逗号分隔 |
+| `MUTE_CHANNELS` | 空 | 不推送的频道 cid，逗号分隔 |
+| `IDLE_SEC` | `90` | 保活与对账间隔（秒） |
+| `DEDUP_SEC` | `60` | 同一用户同一动作的去重窗口（秒） |
+| `ALERT_ON_ERROR` | `1` | 是否推送连接异常告警 |
+| `ALERT_AFTER_FAILS` | `3` | 触发告警的连续失败次数 |
 
-> **全部通过环境变量配置，不需要改代码** —— 环境变量优先级永远高于脚本里的默认值。
-> 有必填项没传时，启动日志会直接打印一条可以照抄的命令，而不是抛一堆看不懂的异常。
-> `--probe` / `--who` 两个诊断模式只需要 TS3 的三个参数，不需要 Bark 的。
+全部参数通过环境变量配置，无需修改代码。必填项缺失时，容器启动后输出一条可直接改用的参考命令。`--probe` 与 `--who` 仅需 TS3 相关参数。
 
-## 推送样式
+## 推送格式
 
-| 场景 | 标题 | 正文 |
+| 事件 | 标题 | 正文 |
 |---|---|---|
-| 进服 | 🎧 TeamSpeak 进入 | `Joko 进入「大厅」` |
-| 离服 | 🚪 TeamSpeak 离开 | `Joko 离开「大厅」` |
-| 连不上 | ⛔ TeamSpeak 离线 | `连续 3 次连接失败` |
-| 恢复 | ✅ TeamSpeak 恢复 | `连接已恢复，断开约 87 秒` |
+| 登录 | 🎧 TeamSpeak 进入 | `Joko 进入「大厅」` |
+| 退出 | 🚪 TeamSpeak 离开 | `Joko 离开「大厅」` |
+| 连接失败 | ⛔ TeamSpeak 离线 | `连续 3 次连接失败` |
+| 连接恢复 | ✅ TeamSpeak 恢复 | `连接已恢复，断开约 87 秒` |
 
-## 准备 TS3 的 Query 账号
+## ServerQuery 账号
 
-1. 用 TS3 客户端以管理员身份连上服务器
-2. 「工具 → ServerQuery 登录」生成一组账号密码（或让管理员执行 `serverquerylogin client_name=你的名字`）
-3. 把账号密码填给 `TS3_USER` / `TS3_PASS`
+1. 以管理员身份登录 TS3 客户端
+2. 选择「工具」→「ServerQuery 登录」，生成账号与密码；或由管理员执行 `serverquerylogin client_name=<名称>`
+3. 将账号与密码填入 `TS3_USER`、`TS3_PASS`
 
-> ⚠️ **注意**：TS3 会为每个 ServerQuery 登录账号在服务端保存一个默认昵称。**如果同一个账号被两个程序同时使用**（比如你还装了别的 TS3 机器人），后连上来的那个设置昵称时会报 `error id=513 nickname is already in use`。规避办法：给每个程序设不同的 `BOT_NICK`，或者各自用独立账号。
->
-> 另外，TS3 默认**不会**把 Query 连接写进 `ts3server_*.log`，所以别指望从服务端日志里排查谁连接过。
+两点需要注意：
+
+- TS3 会为每个 ServerQuery 登录账号在服务端保存默认昵称。同一账号被多个程序同时使用时，后连接方设置昵称将返回 `error id=513 nickname is already in use`。应为每个程序配置不同的 `BOT_NICK`，或分别使用独立账号。
+- TS3 默认不将 ServerQuery 连接写入 `ts3server_*.log`，服务端日志无法用于排查连接问题。
 
 ## 常见问题
 
-**订阅事件时报 `error id=2568` / 权限不足**
-该 Query 账号没有订阅服务器级事件的权限。把它加进一个有权限的 Server Group，或改用管理员账号。
+**订阅事件返回 error id=2568**
 
-**收不到推送**
-先用 `--probe` 确认事件是否到齐；若 `--probe` 正常但没有 `[bark] 200`，那是 Bark 那边的问题（地址不通、key 不对）：
+账号权限不足。需将账号加入具备服务器事件权限的 Server Group，或改用管理员账号。
+
+**未收到推送**
+
+先以 `--probe` 确认事件是否到达。若事件正常但日志无 `[bark] 200`，问题位于 Bark 侧，可直接验证：
 
 ```bash
-curl -X POST 'http://你的Bark地址/你的key' -H 'Content-Type: application/json' \
+curl -X POST 'http://<Bark 地址>/<key>' -H 'Content-Type: application/json' \
   -d '{"title":"测试","body":"hello","group":"TeamSpeak"}'
 ```
 
-**日志里出现 `↳ 已过滤`**
-说明收到的是 ServerQuery / 机器人自身的连接事件（`client_type=1`），已被正确跳过，属正常现象。
+**日志出现「已过滤」**
 
-**日志里出现 `连接异常，X 秒后重连`**
-偶尔一次是网络抖动，会自动恢复；反复出现请检查 TS3 是否在重启、是否有别的程序在用同一个 Query 账号。
+收到的是 ServerQuery 客户端自身的连接事件（`client_type=1`），已按预期跳过。
 
-## 自己构建 / 参与开发
+**日志反复出现「连接异常」**
+
+偶发属于网络抖动，可自动恢复。持续出现时，应检查 TS3 服务是否重启，以及是否有其他程序使用同一 ServerQuery 账号。
+
+## 本地构建
 
 ```bash
 git clone https://github.com/sdparklab/ts3-bark.git
 cd ts3-bark
 docker build -t ts3-bark:dev .
-docker run --rm -it \
-  -e TS3_HOST=192.168.1.10 \
-  -e TS3_USER=你的账号 -e TS3_PASS=你的密码 \
-  ts3-bark:dev --probe
 ```
 
-- 主程序只有一个文件：`ts3_bark.py`（纯标准库）
-- 打 tag 后 GitHub Actions 会自动构建 `linux/amd64` + `linux/arm64` 并推送到 `ghcr.io`
+主程序为单文件 `ts3_bark.py`，仅使用 Python 标准库，无第三方依赖。推送 tag 后，GitHub Actions 将构建 `linux/amd64` 与 `linux/arm64` 镜像并发布至 GHCR。
 
-## License
+## 许可证
 
 MIT
